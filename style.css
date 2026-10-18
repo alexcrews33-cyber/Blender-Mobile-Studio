@@ -1,0 +1,19 @@
+Create or fix the file "src/style.css" in my existing repository "alexcrews33-cyber/Blender-Mobile-Studio", on branch "alexcrews33-cyber-patch-2".
+
+Requirements:
+
+- Write the complete CSS directly into "src/style.css".
+- Make it compatible with my existing "src/App.jsx" and "src/main.jsx".
+- Style the VRChat Avatar Studio interface, including the top bar, 3D preview, avatar customization panel, skin/clothing/hair color inputs, height slider, reset button, status indicator, and footer.
+- Use a professional dark theme with blue accents, readable text, clean spacing, and rounded panels.
+- Make the interface responsive for Android phones, tablets, and desktop screens.
+- Ensure the Three.js / React Three Fiber canvas displays correctly within the preview panel.
+- Include appropriate focus states and reduced-motion support.
+- Do not remove or rewrite working React components.
+- Do not create a duplicate stylesheet or place the file in the repository root. The exact path must be "src/style.css".
+- Check that the CSS selectors match the existing JSX class names.
+- Verify the build with "npm install --no-audit --no-fund" followed by "npm run build".
+- Fix any build errors caused by your changes.
+- Commit the changes to "alexcrews33-cyber-patch-2" if you have permission. If you cannot write to the repository, clearly explain the limitation and provide the exact code to apply.
+
+Do not claim the build succeeds unless you have verified a successful GitHub Actions run. Do not claim that the app is a complete VRChat avatar exporter; this task is specifically to fix the stylesheet and build.
