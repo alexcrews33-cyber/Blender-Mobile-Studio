@@ -1,4 +1,3 @@
-
 name: Build Android APK
 
 on:
@@ -43,12 +42,8 @@ jobs:
       - name: Build web app
         run: npm run build
 
-      - name: Generate Android project if missing
+      - name: Generate native Android project if missing
         run: |
-          if [ ! -f capacitor.config.json ] && [ ! -f capacitor.config.ts ] && [ ! -f capacitor.config.js ]; then
-            echo "::error::Capacitor configuration is missing."
-            exit 1
-          fi
           if [ ! -d android ]; then
             npx cap add android
           fi
@@ -56,20 +51,15 @@ jobs:
       - name: Sync Capacitor Android
         run: npx cap sync android
 
-      - name: Verify Android project
-        run: |
-          test -f android/gradlew
-          test -f android/app/build.gradle || test -f android/app/build.gradle.kts
-
       - name: Build debug APK
-        working-directory: android
         run: |
+          cd android
           chmod +x gradlew
           ./gradlew assembleDebug
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: vrchat-avatar-studio-debug-apk
+          name: avatar-studio-debug-apk
           path: android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
