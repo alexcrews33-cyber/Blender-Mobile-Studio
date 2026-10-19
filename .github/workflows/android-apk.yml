@@ -1,0 +1,71 @@
+
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - alexcrews33-cyber-patch-2
+    paths:
+      - 'src/**'
+      - 'package.json'
+      - 'index.html'
+      - 'vite.config.js'
+      - 'capacitor.config.*'
+      - '.github/workflows/android-apk.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Build web app
+        run: npm run build
+
+      - name: Check Android project configuration
+        run: |
+          if [ ! -f capacitor.config.json ] && [ ! -f capacitor.config.ts ] && [ ! -f capacitor.config.js ]; then
+            echo "::error::Capacitor configuration is missing. An Android project must be configured before an APK can be built."
+            exit 1
+          fi
+          if [ ! -d android ]; then
+            echo "::error::The Android native project is missing. It must be generated before building an APK."
+            exit 1
+          fi
+
+      - name: Set up Java
+        if: ${{ hashFiles('android/gradlew') != '' }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Build debug APK
+        if: ${{ hashFiles('android/gradlew') != '' }}
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Upload APK
+        if: ${{ hashFiles('android/gradlew') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: vrchat-avatar-studio-debug-apk
+          path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          
