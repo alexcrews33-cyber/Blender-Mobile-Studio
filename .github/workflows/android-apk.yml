@@ -9,6 +9,7 @@ on:
     paths:
       - 'src/**'
       - 'package.json'
+      - 'package-lock.json'
       - 'index.html'
       - 'vite.config.js'
       - 'capacitor.config.*'
@@ -30,42 +31,45 @@ jobs:
         with:
           node-version: 20
 
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
       - name: Install dependencies
         run: npm install --no-audit --no-fund
 
       - name: Build web app
         run: npm run build
 
-      - name: Check Android project configuration
+      - name: Generate Android project if missing
         run: |
           if [ ! -f capacitor.config.json ] && [ ! -f capacitor.config.ts ] && [ ! -f capacitor.config.js ]; then
-            echo "::error::Capacitor configuration is missing. An Android project must be configured before an APK can be built."
+            echo "::error::Capacitor configuration is missing."
             exit 1
           fi
           if [ ! -d android ]; then
-            echo "::error::The Android native project is missing. It must be generated before building an APK."
-            exit 1
+            npx cap add android
           fi
 
-      - name: Set up Java
-        if: ${{ hashFiles('android/gradlew') != '' }}
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '21'
+      - name: Sync Capacitor Android
+        run: npx cap sync android
+
+      - name: Verify Android project
+        run: |
+          test -f android/gradlew
+          test -f android/app/build.gradle || test -f android/app/build.gradle.kts
 
       - name: Build debug APK
-        if: ${{ hashFiles('android/gradlew') != '' }}
+        working-directory: android
         run: |
-          cd android
           chmod +x gradlew
           ./gradlew assembleDebug
 
-      - name: Upload APK
-        if: ${{ hashFiles('android/gradlew') != '' }}
+      - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
           name: vrchat-avatar-studio-debug-apk
           path: android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
-          
