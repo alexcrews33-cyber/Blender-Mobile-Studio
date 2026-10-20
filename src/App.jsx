@@ -1,102 +1,37 @@
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import './style.css';
 
-function Avatar({ skin, shirt, hair, height }) {
-  return (
-    <group position={[0, -0.8, 0]} scale={[1, height, 1]}>
-      <mesh position={[0, 1.65, 0]} castShadow>
-        <capsuleGeometry args={[0.23, 0.55, 8, 16]} />
-        <meshStandardMaterial color={skin} />
-      </mesh>
-      <mesh position={[0, 2.15, 0]} castShadow>
-        <sphereGeometry args={[0.28, 32, 32]} />
-        <meshStandardMaterial color={skin} />
-      </mesh>
-      <mesh position={[0, 2.34, -0.035]} castShadow>
-        <sphereGeometry args={[0.285, 32, 24]} />
-        <meshStandardMaterial color={hair} roughness={0.8} />
-      </mesh>
-      <mesh position={[0, 2.12, 0.245]}>
-        <boxGeometry args={[0.09, 0.035, 0.025]} />
-        <meshStandardMaterial color="#29212a" />
-      </mesh>
-      <mesh position={[0, 1.14, 0]} castShadow>
-        <capsuleGeometry args={[0.34, 0.48, 8, 16]} />
-        <meshStandardMaterial color={shirt} />
-      </mesh>
-      {[-0.43, 0.43].map((x) => (
-        <mesh key={x} position={[x, 1.18, 0]} rotation={[0, 0, x < 0 ? -0.12 : 0.12]} castShadow>
-          <capsuleGeometry args={[0.105, 0.52, 8, 12]} />
-          <meshStandardMaterial color={skin} />
-        </mesh>
-      ))}
-      {[-0.17, 0.17].map((x) => (
-        <group key={x}>
-          <mesh position={[x, 0.49, 0]} castShadow>
-            <capsuleGeometry args={[0.14, 0.6, 8, 12]} />
-            <meshStandardMaterial color="#26354d" />
-          </mesh>
-          <mesh position={[x, 0.08, 0.07]} castShadow>
-            <boxGeometry args={[0.27, 0.15, 0.42]} />
-            <meshStandardMaterial color="#20232a" />
-          </mesh>
-        </group>
-      ))}
-    </group>
-  );
-}
-
-function normalizeResourceName(value) {
-  try {
-    return decodeURIComponent(value || '')
-      .replace(/\\/g, '/')
-      .split('/')
-      .pop()
-      ?.toLowerCase() || '';
-  } catch {
-    return (value || '').split('/').pop()?.toLowerCase() || '';
-  }
-}
-
-function isSupportedModelFile(file) {
-  return Boolean(file?.name && /\.(glb|gltf)$/i.test(file.name));
-}
-
-function ImportedModel({ modelUrl, onError, onLoaded }) {
+function ImportedModel({ data, format, resources, onLoaded, onError }) {
   const [scene, setScene] = useState(null);
-  const onErrorRef = useRef(onError);
-  const onLoadedRef = useRef(onLoaded);
+  const loadedRef = useRef(onLoaded);
+  const errorRef = useRef(onError);
+
+  useEffect(() => { loadedRef.current = onLoaded; }, [onLoaded]);
+  useEffect(() => { errorRef.current = onError; }, [onError]);
 
   useEffect(() => {
-    onErrorRef.current = onError;
-  }, [onError]);
-
-  useEffect(() => {
-    onLoadedRef.current = onLoaded;
-  }, [onLoaded]);
-
-  useEffect(() => {
-    if (!modelUrl) {
+    if (!data) {
       setScene(null);
-      return undefined;
+      return;
     }
 
-    let active = true;
+    let cancelled = false;
     const loader = new GLTFLoader();
 
-    loader.load(
-      modelUrl,
+    loader.parse(
+      data,
+      '',
       (gltf) => {
-        if (!active) return;
+        if (cancelled) return;
 
         const root = gltf.scene || gltf.scenes?.[0];
         if (!root) {
-          onErrorRef.current?.('The selected file contains no 3D scene.');
+          errorRef.current('The file contains no 3D scene.');
           return;
         }
 
@@ -104,7 +39,7 @@ function ImportedModel({ modelUrl, onError, onLoaded }) {
         const bounds = new THREE.Box3().setFromObject(root);
 
         if (bounds.isEmpty()) {
-          onErrorRef.current?.('The model contains no visible geometry.');
+          errorRef.current('No visible 3D geometry was found in this model.');
           return;
         }
 
@@ -113,198 +48,198 @@ function ImportedModel({ modelUrl, onError, onLoaded }) {
         const largest = Math.max(size.x, size.y, size.z);
 
         if (!Number.isFinite(largest) || largest <= 0) {
-          onErrorRef.current?.('The model has invalid dimensions.');
+          errorRef.current('The model has invalid dimensions.');
           return;
         }
 
-        const scale = 1.8 / largest;
         root.position.sub(center);
-        root.scale.setScalar(scale);
-        root.position.multiplyScalar(scale);
-        root.position.y += 0.3;
-        root.rotation.y = Math.PI;
+        root.scale.setScalar(2 / largest);
+        root.position.multiplyScalar(2 / largest);
+        root.position.y += 0.15;
 
-        root.traverse((child) => {
-          if (child.isMesh) {
-            child.castShadow = true;
-            child.receiveShadow = true;
+        root.traverse((object) => {
+          if (object.isMesh) {
+            object.castShadow = true;
+            object.receiveShadow = true;
+            if (object.material) {
+              object.material.side = THREE.DoubleSide;
+            }
           }
         });
 
         root.updateMatrixWorld(true);
         setScene(root);
-        onLoadedRef.current?.(root);
+        loadedRef.current();
       },
-      undefined,
       (error) => {
-        if (!active) return;
-        console.error('GLTFLoader error:', error);
-        onErrorRef.current?.(
-          error?.message || 'Could not load this model. Check its format and required files.'
+        if (cancelled) return;
+        console.error('GLTF parse failed:', error);
+        errorRef.current(
+          error?.message || 'Could not read this model. Check the file and its textures.'
         );
       }
     );
 
-    return () => {
-      active = false;
-    };
-  }, [modelUrl]);
+    return () => { cancelled = true; };
+  }, [data, format, resources]);
 
-  if (!scene) return null;
-  return <primitive object={scene} />;
+  return scene ? <primitive object={scene} /> : null;
 }
 
-function createCompanionUrls(gltfFile, companionFiles) {
-  return gltfFile.text().then((text) => {
-    let json;
-
-    try {
-      json = JSON.parse(text);
-    } catch {
-      throw new Error('The .gltf file is not valid JSON.');
-    }
-
-    if (!json.asset) {
-      throw new Error('The .gltf file is missing asset metadata.');
-    }
-
-    const createdUrls = [];
-    const missing = [];
-
-    function rewrite(value) {
-      if (!value || typeof value !== 'object') return;
-
-      if (Array.isArray(value)) {
-        value.forEach(rewrite);
-        return;
-      }
-
-      for (const [key, item] of Object.entries(value)) {
-        if (key === 'uri' && typeof item === 'string' && !/^(data:|blob:|https?:)/i.test(item)) {
-          let decoded = item;
-          try { decoded = decodeURIComponent(item); } catch {}
-
-          const wanted = normalizeResourceName(decoded.split(/[?#]/)[0]);
-          const match = companionFiles.find(
-            (file) => normalizeResourceName(file.name) === wanted
-          );
-
-          if (match) {
-            let url = match.__avatarStudioUrl;
-            if (!url) {
-              url = URL.createObjectURL(match);
-              Object.defineProperty(match, '__avatarStudioUrl', {
-                value: url,
-                configurable: true
-              });
-              createdUrls.push(url);
-            }
-            value[key] = url;
-          } else {
-            missing.push(wanted || item);
-          }
-        } else {
-          rewrite(item);
-        }
-      }
-    }
-
-    rewrite(json);
-
-    if (missing.length) {
-      createdUrls.forEach(URL.revokeObjectURL);
-      throw new Error(
-        `Missing companion file(s): ${[...new Set(missing)].join(', ')}. Select the .gltf, .bin and texture files together.`
-      );
-    }
-
-    return {
-      url: URL.createObjectURL(
-        new Blob([JSON.stringify(json)], { type: 'model/gltf+json' })
-      ),
-      companionUrls: createdUrls
-    };
-  });
+function filenameOf(uri) {
+  try {
+    return decodeURIComponent(uri.split(/[?#]/)[0].split('/').pop()).toLowerCase();
+  } catch {
+    return uri.split(/[?#]/)[0].split('/').pop().toLowerCase();
+  }
 }
 
 export default function App() {
-  const [skin, setSkin] = useState('#e9b99a');
-  const [shirt, setShirt] = useState('#4f86e8');
-  const [hair, setHair] = useState('#49352d');
-  const [height, setHeight] = useState(1);
+  const [modelData, setModelData] = useState(null);
+  const [modelFormat, setModelFormat] = useState('');
+  const [resources, setResources] = useState([]);
+  const [filename, setFilename] = useState('');
+  const [status, setStatus] = useState('Choose a .glb or .gltf model to begin.');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
   const [showGrid, setShowGrid] = useState(true);
-  const [importedModelUrl, setImportedModelUrl] = useState(null);
-  const [selectedFilename, setSelectedFilename] = useState('');
-  const [importStatus, setImportStatus] = useState('');
-  const [importError, setImportError] = useState('');
-  const [isImporting, setIsImporting] = useState(false);
-  const fileInputRef = useRef(null);
-  const modelUrlCacheRef = useRef([]);
+  const inputRef = useRef(null);
+  const urlsRef = useRef([]);
 
-  const clearTemporaryModelUrls = useCallback(() => {
-    modelUrlCacheRef.current.forEach((url) => URL.revokeObjectURL(url));
-    modelUrlCacheRef.current = [];
+  function clearUrls() {
+    urlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    urlsRef.current = [];
+  }
+
+  useEffect(() => () => {
+    urlsRef.current.forEach((url) => URL.revokeObjectURL(url));
   }, []);
 
-  useEffect(() => () => clearTemporaryModelUrls(), [clearTemporaryModelUrls]);
-
-  const returnToStarterAvatar = useCallback(() => {
-    clearTemporaryModelUrls();
-    setImportedModelUrl(null);
-    setSelectedFilename('');
-    setImportError('');
-    setImportStatus('Starter avatar restored');
-  }, [clearTemporaryModelUrls]);
-
-  const handleModelImport = async (event) => {
+  async function importModel(event) {
     const input = event.currentTarget;
-    const selectedFiles = Array.from(input.files || []);
-    const file = selectedFiles.find(isSupportedModelFile);
+    const files = Array.from(input.files || []);
+    const file = files.find((item) => /\.(glb|gltf)$/i.test(item.name));
 
     if (!file) {
-      setImportError('Choose a .glb or .gltf model file.');
-      setImportStatus('Import failed');
+      setError('Select a .glb or .gltf model file.');
+      setStatus('Import failed.');
       input.value = '';
       return;
     }
 
-    setSelectedFilename(file.name);
-    setImportError('');
-    setImportStatus(`Selected ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB). Preparing import…`);
-    setIsImporting(true);
+    setBusy(true);
+    setError('');
+    setFilename(file.name);
+    setStatus(`Reading ${file.name}…`);
+
+    const newUrls = [];
 
     try {
-      let nextUrl;
-      let companionUrls = [];
+      let data;
+      const isGlb = /\.glb$/i.test(file.name);
 
-      if (/\.glb$/i.test(file.name)) {
-        // Read binary bytes first to verify Android returned a readable File.
-        const bytes = await file.arrayBuffer();
-        if (!bytes.byteLength) throw new Error('The selected file is empty.');
-
-        nextUrl = URL.createObjectURL(
-          new Blob([bytes], { type: 'model/gltf-binary' })
-        );
+      if (isGlb) {
+        data = await file.arrayBuffer();
+        if (!data.byteLength) throw new Error('The selected file is empty.');
       } else {
-        const companions = selectedFiles.filter((candidate) => candidate !== file);
-        const result = await createCompanionUrls(file, companions);
-        nextUrl = result.url;
-        companionUrls = result.companionUrls;
+        const text = await file.text();
+        let json;
+
+        try {
+          json = JSON.parse(text);
+        } catch {
+          throw new Error('The .gltf file is not valid JSON.');
+        }
+
+        if (!json.asset || !json.asset.version) {
+          throw new Error('The .gltf file is missing asset version information.');
+        }
+
+        function rewriteUris(value) {
+          if (!value || typeof value !== 'object') return;
+          if (Array.isArray(value)) {
+            value.forEach(rewriteUris);
+            return;
+          }
+
+          for (const [key, item] of Object.entries(value)) {
+            if (
+              key === 'uri' &&
+              typeof item === 'string' &&
+              !/^(data:|blob:|https?:)/i.test(item)
+            ) {
+              const wanted = filenameOf(item);
+              const companion = files.find(
+                (candidate) =>
+                  candidate !== file &&
+                  candidate.name.toLowerCase() === wanted
+              );
+
+              if (!companion) {
+                throw new Error(
+                  `Missing file "${wanted}". Select the .gltf, .bin and texture files together.`
+                );
+              }
+
+              let url = companion.__avatarStudioUrl;
+              if (!url) {
+                url = URL.createObjectURL(companion);
+                Object.defineProperty(companion, '__avatarStudioUrl', {
+                  value: url,
+                  configurable: true
+                });
+              }
+
+              newUrls.push(url);
+              value[key] = url;
+            } else {
+              rewriteUris(item);
+            }
+          }
+        }
+
+        rewriteUris(json);
+        data = JSON.stringify(json);
       }
 
-      clearTemporaryModelUrls();
-      modelUrlCacheRef.current = [nextUrl, ...companionUrls];
-      setImportedModelUrl(nextUrl);
-      setImportStatus(`Loading ${file.name}…`);
-    } catch (error) {
-      console.error('Model import preparation failed:', error);
-      setImportError(error?.message || 'Could not read the selected model.');
-      setImportStatus('Import failed');
+      clearUrls();
+      urlsRef.current = newUrls;
+      setResources([...newUrls]);
+      setModelFormat(isGlb ? 'glb' : 'gltf');
+      setModelData(data);
+      setStatus('Loading model into the 3D viewer…');
+    } catch (err) {
+      newUrls.forEach((url) => URL.revokeObjectURL(url));
+      setError(err?.message || 'Could not import this model.');
+      setStatus('Import failed.');
+      setBusy(false);
     } finally {
-      setIsImporting(false);
       input.value = '';
     }
-  };
+  }
+
+  function handleLoaded() {
+    setError('');
+    setStatus(`Successfully loaded ${filename}`);
+    setBusy(false);
+  }
+
+  function handleError(message) {
+    setError(message);
+    setStatus('Import failed.');
+    setBusy(false);
+  }
+
+  function resetModel() {
+    clearUrls();
+    setModelData(null);
+    setModelFormat('');
+    setResources([]);
+    setFilename('');
+    setError('');
+    setStatus('Choose a .glb or .gltf model to begin.');
+    setBusy(false);
+  }
 
   return (
     <main className="studio">
@@ -321,31 +256,39 @@ export default function App() {
 
       <section className="workspace">
         <div className="viewport">
-          <div className="viewport-label">3D PREVIEW <span>DRAG TO ROTATE</span></div>
+          <div className="viewport-label">
+            3D PREVIEW <span>DRAG TO ROTATE</span>
+          </div>
+
           <Canvas camera={{ position: [3, 2.5, 5], fov: 40 }} shadows>
             <color attach="background" args={['#151923']} />
-            <ambientLight intensity={1.4} />
+            <ambientLight intensity={1.5} />
             <directionalLight position={[4, 6, 5]} intensity={2} castShadow />
-            <pointLight position={[-3, 2, -2]} intensity={12} color="#638bff" />
-            {!importedModelUrl && <Avatar skin={skin} shirt={shirt} hair={hair} height={height} />}
-            {importedModelUrl && (
+            <directionalLight position={[-3, 2, -2]} intensity={0.8} />
+            {modelData !== null && (
               <ImportedModel
-                modelUrl={importedModelUrl}
-                onError={(message) => {
-                  setImportError(message);
-                  setImportStatus('Import failed');
-                  clearTemporaryModelUrls();
-                  setImportedModelUrl(null);
-                }}
-                onLoaded={() => {
-                  setImportError('');
-                  setImportStatus(`Successfully loaded ${selectedFilename}`);
-                }}
+                data={modelData}
+                format={modelFormat}
+                resources={resources}
+                onLoaded={handleLoaded}
+                onError={handleError}
               />
             )}
-            {showGrid && <gridHelper args={[10, 20, '#49546a', '#303746']} position={[0, -0.72, 0]} />}
-            <OrbitControls target={[0, 1.15, 0]} enablePan={false} minDistance={3} maxDistance={9} />
+            {showGrid && (
+              <gridHelper
+                args={[10, 20, '#49546a', '#303746']}
+                position={[0, -0.72, 0]}
+              />
+            )}
+            <OrbitControls
+              makeDefault
+              target={[0, 0.3, 0]}
+              enablePan={false}
+              minDistance={1}
+              maxDistance={12}
+            />
           </Canvas>
+
           <div className="preview-footer">
             <span>● LIVE PREVIEW</span>
             <button type="button" onClick={() => setShowGrid((value) => !value)}>
@@ -355,95 +298,60 @@ export default function App() {
         </div>
 
         <aside className="controls">
-          <h2>Customize avatar</h2>
-          <p className="subtext">Personalize your character.</p>
+          <h2>Import 3D model</h2>
+          <p className="subtext">Load a model into the viewer.</p>
 
           <div className="import-panel">
             <input
-              ref={fileInputRef}
+              ref={inputRef}
               type="file"
               accept=".glb,.gltf,.bin,.png,.jpg,.jpeg,.webp,.ktx,.ktx2"
               multiple
-              onChange={handleModelImport}
+              onChange={importModel}
               className="import-input"
             />
+
             <button
               type="button"
               className="import-button"
-              disabled={isImporting}
-              onClick={() => {
-                if (fileInputRef.current) {
-                  fileInputRef.current.value = '';
-                  fileInputRef.current.click();
-                }
-              }}
+              disabled={busy}
+              onClick={() => inputRef.current?.click()}
             >
-              {isImporting ? 'Importing…' : 'Import 3D Model'}
+              {busy ? 'Importing…' : 'Import 3D Model'}
             </button>
 
-            {selectedFilename && (
+            {filename && (
               <div className="file-meta">
                 <span className="file-label">Selected file</span>
-                <strong>{selectedFilename}</strong>
+                <strong>{filename}</strong>
               </div>
             )}
-            {(importStatus || importError) && (
-              <p className={`status-message ${importError ? 'status-error' : 'status-success'}`}>
-                {importError || importStatus}
-              </p>
-            )}
-            {importedModelUrl && (
-              <button type="button" className="return-button" onClick={returnToStarterAvatar}>
-                Return to starter avatar
+
+            <p className={`status-message ${error ? 'status-error' : 'status-success'}`}>
+              {error || status}
+            </p>
+
+            {modelData !== null && (
+              <button
+                type="button"
+                className="return-button"
+                onClick={resetModel}
+              >
+                Remove model
               </button>
             )}
           </div>
 
-          <label>Skin color</label>
-          <div className="color-row">
-            <input aria-label="Skin color" type="color" value={skin} onChange={(e) => setSkin(e.target.value)} />
-            <span>{skin}</span>
-          </div>
-
-          <label>Clothing color</label>
-          <div className="color-row">
-            <input aria-label="Clothing color" type="color" value={shirt} onChange={(e) => setShirt(e.target.value)} />
-            <span>{shirt}</span>
-          </div>
-
-          <label>Hair color</label>
-          <div className="color-row">
-            <input aria-label="Hair color" type="color" value={hair} onChange={(e) => setHair(e.target.value)} />
-            <span>{hair}</span>
-          </div>
-
-          <label htmlFor="height">Character height</label>
-          <div className="slider-row">
-            <input id="height" type="range" min="0.8" max="1.2" step="0.05" value={height} onChange={(e) => setHeight(Number(e.target.value))} />
-            <span>{height.toFixed(2)}x</span>
-          </div>
-
-          <button
-            type="button"
-            className="reset"
-            onClick={() => {
-              setSkin('#e9b99a');
-              setShirt('#4f86e8');
-              setHair('#49352d');
-              setHeight(1);
-            }}
-          >
-            Reset appearance
-          </button>
-
           <div className="notice">
-            <strong>Next step</strong>
-            <p>This starter editor previews 3D meshes. It does not automatically rig models or publish avatars to VRChat.</p>
+            <strong>Supported formats</strong>
+            <p>GLB models are loaded from their binary data. For GLTF files, select the required .bin and texture files together.</p>
           </div>
         </aside>
       </section>
 
-      <footer className="footer">AVATAR STUDIO <span>Built for desktop, mobile and tablet</span></footer>
+      <footer className="footer">
+        AVATAR STUDIO <span>Built for desktop, mobile and tablet</span>
+      </footer>
     </main>
   );
 }
